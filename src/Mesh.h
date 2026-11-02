@@ -33,9 +33,17 @@ public:
 
     void draw() const;
 
+    // ---- Инстанциране (instancing) ----
+    // Качва в GPU масив от Model матрици - по една за всяко копие.
+    // След това drawInstanced() рисува ВСИЧКИ копия с една заявка.
+    void setInstances(const std::vector<glm::mat4>& matrices);
+    void drawInstanced() const;
+
 private:
     GLuint m_vao = 0, m_vbo = 0, m_ebo = 0;
     GLsizei m_indexCount = 0;
+    GLuint  m_instanceVbo   = 0;
+    GLsizei m_instanceCount = 0;
 };
 
 // Фабрични функции за основни геометрични примитиви
@@ -44,4 +52,5 @@ namespace Primitives {
     Mesh* createPlane(float size, float uvRepeat = 1);  // хоризонтална равнина size x size
     Mesh* createSphere(int segments = 32, int rings = 16); // сфера с диаметър 1
     Mesh* createCylinder(int segments = 24);             // цилиндър: диаметър 1, височина 1, ос Y
+    Mesh* createCone(int segments = 24);                 // конус: диаметър на основата 1, височина 1
 }
