@@ -1,6 +1,6 @@
 // ============================================================
 //  Интерактивен 3D автомобилен симулатор
-//  Етап 5: Камера от трето лице, камера над капака и свободна камера
+//  Етап 6: Обекти (дървета, сгради, мантинели, конуси) и колизии
 //
 //  Камери:
 //    C            - смяна: трето лице -> над капака -> свободна -> ...
@@ -53,6 +53,7 @@
 #include "Renderer.h"
 #include "Car.h"
 #include "FollowCamera.h"
+#include "World.h"
 
 // ------------------------------------------------------------
 //  Глобално състояние на приложението (достъпно от callback-ите)
@@ -215,17 +216,6 @@ static const char* cameraName(CameraMode m) {
     }
 }
 
-// ------------------------------------------------------------
-//  Улична лампа - описание за рисуване
-// ------------------------------------------------------------
-struct StreetLamp {
-    glm::mat4 transform;    // от локалните координати на лампата към света
-};
-
-// Части на лампата в ЛОКАЛНИ координати: основата е в (0,0,0),
-// стълбът е по +Y, рамото излиза по +X (към пътя).
-static const glm::vec3 kLampLightLocal(1.9f, 5.65f, 0.0f);   // къде е крушката
-
 int main() {
     // ---- Инициализация на GLFW и прозорец ----
     if (!glfwInit()) { std::cerr << "GLFW init failed\n"; return -1; }
@@ -271,7 +261,6 @@ int main() {
 
         // ---- Геометрия ----
         std::unique_ptr<Mesh> cube  (Primitives::createCube());
-        std::unique_ptr<Mesh> sphere(Primitives::createSphere());
         std::unique_ptr<Mesh> cylinder(Primitives::createCylinder());
         std::unique_ptr<Mesh> quad  (Primitives::createPlane(1.0f));   // за сянката на колата
 
@@ -286,66 +275,15 @@ int main() {
         // ---- Материали ----
         Material grassMat;  grassMat.specular = 0.05f; grassMat.shininess = 8.0f;
         Material roadMat;   roadMat.specular  = 0.25f; roadMat.shininess  = 24.0f;
-        Material metalMat;  metalMat.color = {0.35f, 0.37f, 0.40f};
-                            metalMat.specular = 0.6f;  metalMat.shininess = 64.0f;
-        Material bulbMat;   bulbMat.color = {1.0f, 0.95f, 0.8f};
-                            bulbMat.specular = 0.0f;
 
         // ---- Слънце ----
         DirLight sun;
 
-        // ---- Улични лампи покрай пътя ----
-        // Поставят се през равен брой точки по централната линия, от
-        // дясната страна на пътя, на 1.5 м след банкета.
-        std::vector<StreetLamp> lamps;
-        std::vector<PointLight> lampLights;
-        const int lampEvery = road.sampleCount() / 12;          // 12 лампи по пистата
-        for (int i = 0; i < road.sampleCount() && (int)lamps.size() < kMaxPointLights;
-             i += lampEvery) {
-            glm::vec3 center = road.centerPoint(i);
-            glm::vec3 right  = road.rightVector(i);
-
-            glm::vec3 base = center + right * (road.halfWidth() + 1.5f);
-            base.y = terrain.heightAt(base.x, base.z);
-
-            // Матрица на смяна на базиса: локалните оси на лампата -> световни вектори.
-            //   локално X (рамото)  -> -right (към пътя)
-            //   локално Y (стълбът) -> нагоре
-            //   локално Z           -> X x Y (дясна координатна система)
-            glm::vec3 axisX = -right;
-            glm::vec3 axisY(0.0f, 1.0f, 0.0f);
-            glm::vec3 axisZ = glm::cross(axisX, axisY);
-            glm::mat4 m(1.0f);
-            m[0] = glm::vec4(axisX, 0.0f);   // колона 0
-            m[1] = glm::vec4(axisY, 0.0f);   // колона 1
-            m[2] = glm::vec4(axisZ, 0.0f);   // колона 2
-            m[3] = glm::vec4(base,  1.0f);   // колона 3 - транслация
-            lamps.push_back({m});
-
-            PointLight pl;
-            pl.position = glm::vec3(m * glm::vec4(kLampLightLocal, 1.0f));
-            lampLights.push_back(pl);
-        }
-
-        // ---- Сфери за демонстрация на материалите (до старта) ----
-        // Еднакъв цвят, различна shininess -> различен размер на отблясъка.
-        struct DemoSphere { glm::mat4 model; Material mat; };
-        std::vector<DemoSphere> spheres;
-        {
-            glm::vec3 c0 = road.centerPoint(6);
-            glm::vec3 r0 = road.rightVector(6);
-            glm::vec3 d0 = road.direction(6);
-            const float shin[3] = {8.0f, 32.0f, 128.0f};
-            const glm::vec3 col[3] = {{0.80f, 0.15f, 0.12f}, {0.15f, 0.45f, 0.85f}, {0.90f, 0.70f, 0.20f}};
-            for (int k = 0; k < 3; ++k) {
-                glm::vec3 p = c0 - r0 * (road.halfWidth() + 3.0f) + d0 * (k * 5.0f);
-                p.y = terrain.heightAt(p.x, p.z) + 1.0f;
-                Material m; m.color = col[k]; m.specular = 0.8f; m.shininess = shin[k];
-                spheres.push_back({glm::scale(glm::translate(glm::mat4(1.0f), p), glm::vec3(2.0f)), m});
-            }
-        }
-
-        std::cout << "Track length: " << road.length() << " m, lamps: " << lamps.size() << "\n";
+        // ---- Обекти покрай пистата: дървета, сгради, лампи, мантинели, конуси ----
+        World world(road, terrain);
+        std::cout << "Track length: " << road.length() << " m, trees: " << world.treeCount()
+                  << ", lamps: " << world.lampLights().size() << "\n";
+        int crashes = 0;     // брой силни удари
 
         // ---- Кола на старта на пистата ----
         glm::vec3 startDir     = road.startDirection();
@@ -367,11 +305,11 @@ int main() {
 
         while (!glfwWindowShouldClose(window)) {
             float now = static_cast<float>(glfwGetTime());
-            float dt  = now - lastFrame;
+            float frameTime = now - lastFrame;   // реалното време на кадъра (за FPS)
             lastFrame = now;
             // Ограничение на dt: ако програмата "замръзне" за момент (напр. при
             // влачене на прозореца), физиката не трябва да прави огромна стъпка
-            if (dt > 0.05f) dt = 0.05f;
+            float dt = frameTime > 0.05f ? 0.05f : frameTime;
 
             if (g_app.switchCamera) {
                 cycleCamera(car);
@@ -381,10 +319,19 @@ int main() {
             // ---- Физика на колата ----
             if (g_app.resetCar) {
                 car.reset(road.startPosition(), startHeading);
+                world.reset();
                 g_app.follow.snapTo(car);
                 g_app.resetCar = false;
             }
             car.update(dt, readCarInput(window), terrain, road);
+
+            // ---- Колизии: СЛЕД движението, ПРЕДИ рисуването ----
+            float impact = world.collide(car);
+            if (impact > 3.0f) {                         // силен удар (> ~11 km/h)
+                ++crashes;
+                g_app.follow.addShake(impact / 15.0f);
+            }
+            world.update(dt);
 
             // ---- Камери ----
             // Следващата камера се обновява СЛЕД колата - използва новата ѝ позиция
@@ -400,13 +347,13 @@ int main() {
                 }
             }
 
-            fpsTimer += dt; ++frames;
+            fpsTimer += frameTime; ++frames;   // FPS - по реалното време, не по dt
             if (fpsTimer >= 1.0f) {
                 char title[200];
                 std::snprintf(title, sizeof(title),
-                    "Car Simulator | FPS: %d | Speed: %.0f km/h | Steer: %+.0f deg | %s | Camera: %s",
-                    frames, car.speedKmh(), car.steerDeg(),
-                    car.onRoad() ? "Road" : "Grass", cameraName(g_app.cameraMode));
+                    "Car Simulator | FPS: %d | Speed: %.0f km/h | %s | Crashes: %d | Camera: %s",
+                    frames, car.speedKmh(), car.onRoad() ? "Road" : "Grass",
+                    crashes, cameraName(g_app.cameraMode));
                 glfwSetWindowTitle(window, title);
                 fpsTimer = 0.0f; frames = 0;
             }
@@ -434,7 +381,7 @@ int main() {
             shader.setMat4("uView",       view);
             shader.setMat4("uProjection", projection);
             shader.setVec3("uCameraPos",  eye);
-            uploadLights(shader, sun, lampLights, g_app.light);
+            uploadLights(shader, sun, world.lampLights(), g_app.light);
 
             // Терен
             grassTex.bind(0);
@@ -459,23 +406,8 @@ int main() {
             road.draw();
             glDisable(GL_POLYGON_OFFSET_FILL);
 
-            // Улични лампи: всяка част = (матрица на лампата) * (локална матрица на частта)
-            Material bulb = bulbMat;
-            bulb.emissive = g_app.light.lamps ? glm::vec3(1.0f, 0.9f, 0.6f) : glm::vec3(0.0f);
-            for (const StreetLamp& lamp : lamps) {
-                drawMesh(shader, *cube, lamp.transform * partTransform({0.0f, 3.0f, 0.0f}, {0.18f, 6.0f, 0.18f}),
-                         metalMat, MODE_COLOR);                                      // стълб
-                drawMesh(shader, *cube, lamp.transform * partTransform({1.0f, 5.95f, 0.0f}, {2.0f, 0.12f, 0.12f}),
-                         metalMat, MODE_COLOR);                                      // рамо
-                drawMesh(shader, *cube, lamp.transform * partTransform({1.9f, 5.85f, 0.0f}, {0.7f, 0.15f, 0.35f}),
-                         metalMat, MODE_COLOR);                                      // корпус
-                drawMesh(shader, *cube, lamp.transform * partTransform({1.9f, 5.75f, 0.0f}, {0.55f, 0.06f, 0.25f}),
-                         bulb, MODE_COLOR);                                          // светеща част
-            }
-
-            // Демонстрационни сфери
-            for (const DemoSphere& s : spheres)
-                drawMesh(shader, *sphere, s.model, s.mat, MODE_COLOR);
+            // Дървета, сгради, лампи, мантинели, бали, конуси
+            world.draw(shader, g_app.light.lamps);
 
             // Колата - последна, защото сянката ѝ е полупрозрачна и трябва
             // да се смеси с вече нарисувания път/терен под нея
