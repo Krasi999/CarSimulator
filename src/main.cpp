@@ -1,13 +1,21 @@
 // ============================================================
 //  Интерактивен 3D автомобилен симулатор
-//  Етап 4: Автомобил - йерархичен модел и физика на движението
+//  Етап 5: Камера от трето лице, камера над капака и свободна камера
 //
-//  Управление на колата:
-//    Стрелка нагоре   - газ
-//    Стрелка надолу   - спирачка / заден ход
-//    Стрелки ляво/дясно - волан
-//    H                - ръчна спирачка
-//    R                - връщане на старта
+//  Камери:
+//    C            - смяна: трето лице -> над капака -> свободна -> ...
+//
+//  Управление на колата (стрелките работят винаги):
+//    W / Стрелка нагоре   - газ
+//    S / Стрелка надолу   - спирачка / заден ход
+//    A, D / Стрелки       - волан
+//    Space / H            - ръчна спирачка
+//    R                    - връщане на старта
+//    (в режим "свободна камера" WASD/Space управляват камерата, не колата)
+//
+//  Камера от трето лице:
+//    Мишка        - оглеждане около колата (връща се сама зад нея)
+//    Колелце      - приближаване / отдалечаване
 //
 //  Свободна камера:
 //    W/A/S/D      - напред / наляво / назад / надясно
@@ -44,13 +52,20 @@
 #include "Lighting.h"
 #include "Renderer.h"
 #include "Car.h"
+#include "FollowCamera.h"
 
 // ------------------------------------------------------------
 //  Глобално състояние на приложението (достъпно от callback-ите)
 // ------------------------------------------------------------
+// Активна камера
+enum class CameraMode { ThirdPerson, Hood, Free };
+
 struct AppState {
     int    width = 1280, height = 720;
-    Camera camera;
+    Camera       camera;            // свободна камера
+    FollowCamera follow;            // камера, следваща колата (трето лице / капак)
+    CameraMode   cameraMode = CameraMode::ThirdPerson;
+    bool         switchCamera = false;  // заявка за смяна (клавиш C)
     bool   firstMouse    = true;
     double lastX = 0.0, lastY = 0.0;
     bool   mouseCaptured = true;
@@ -82,11 +97,18 @@ static void cursorPosCallback(GLFWwindow*, double x, double y) {
     g_app.lastX = x;
     g_app.lastY = y;
 
-    g_app.camera.processMouseMovement(xOffset, yOffset);
+    // Мишката управлява активната камера
+    if (g_app.cameraMode == CameraMode::Free)
+        g_app.camera.processMouseMovement(xOffset, yOffset);
+    else if (g_app.cameraMode == CameraMode::ThirdPerson)
+        g_app.follow.addOrbit(xOffset * 0.15f, -yOffset * 0.15f);
 }
 
 static void scrollCallback(GLFWwindow*, double, double yOffset) {
-    g_app.camera.processMouseScroll(static_cast<float>(yOffset));
+    if (g_app.cameraMode == CameraMode::Free)
+        g_app.camera.processMouseScroll(static_cast<float>(yOffset));
+    else
+        g_app.follow.zoom(static_cast<float>(yOffset));
 }
 
 static void keyCallback(GLFWwindow* window, int key, int, int action, int) {
@@ -113,6 +135,7 @@ static void keyCallback(GLFWwindow* window, int key, int, int action, int) {
         case GLFW_KEY_5: l.lamps    = !l.lamps;    break;
         case GLFW_KEY_B: l.blinn    = !l.blinn;    break;
         case GLFW_KEY_R: g_app.resetCar = true;    break;
+        case GLFW_KEY_C: g_app.switchCamera = true; break;
         default: break;
     }
 }
@@ -136,12 +159,60 @@ static void processInput(GLFWwindow* window, float dt) {
 // ------------------------------------------------------------
 static CarInput readCarInput(GLFWwindow* window) {
     auto down = [&](int key) { return glfwGetKey(window, key) == GLFW_PRESS; };
+    // WASD управляват колата само когато свободната камера НЕ е активна
+    const bool wasd = g_app.cameraMode != CameraMode::Free;
+
+    bool gas   = down(GLFW_KEY_UP)    || (wasd && down(GLFW_KEY_W));
+    bool brake = down(GLFW_KEY_DOWN)  || (wasd && down(GLFW_KEY_S));
+    bool left  = down(GLFW_KEY_LEFT)  || (wasd && down(GLFW_KEY_A));
+    bool right = down(GLFW_KEY_RIGHT) || (wasd && down(GLFW_KEY_D));
+
     CarInput in;
-    in.throttle  = down(GLFW_KEY_UP)   ? 1.0f : 0.0f;
-    in.brake     = down(GLFW_KEY_DOWN) ? 1.0f : 0.0f;
-    in.steer     = (down(GLFW_KEY_RIGHT) ? 1.0f : 0.0f) - (down(GLFW_KEY_LEFT) ? 1.0f : 0.0f);
-    in.handbrake = down(GLFW_KEY_H);
+    in.throttle  = gas   ? 1.0f : 0.0f;
+    in.brake     = brake ? 1.0f : 0.0f;
+    in.steer     = (right ? 1.0f : 0.0f) - (left ? 1.0f : 0.0f);
+    in.handbrake = down(GLFW_KEY_H) || (wasd && down(GLFW_KEY_SPACE));
     return in;
+}
+
+// ------------------------------------------------------------
+//  Смяна на камерата: трето лице -> капак -> свободна -> трето лице
+// ------------------------------------------------------------
+static void cycleCamera(const Car& car) {
+    switch (g_app.cameraMode) {
+        case CameraMode::ThirdPerson:
+            g_app.cameraMode  = CameraMode::Hood;
+            g_app.follow.mode = FollowMode::Hood;
+            break;
+
+        case CameraMode::Hood: {
+            // Свободната камера започва ТОЧНО там, където е била следващата,
+            // за да няма "скок" в картината. Ъглите yaw/pitch се изчисляват
+            // обратно от посоката на гледане (обратното на Camera::updateVectors).
+            glm::vec3 pos = g_app.follow.position();
+            glm::vec3 dir = glm::normalize(g_app.follow.target() - pos);
+            float yaw   = glm::degrees(std::atan2(dir.z, dir.x));
+            float pitch = glm::degrees(std::asin(glm::clamp(dir.y, -1.0f, 1.0f)));
+            g_app.camera = Camera(pos, yaw, pitch);
+            g_app.cameraMode = CameraMode::Free;
+            break;
+        }
+
+        case CameraMode::Free:
+            g_app.cameraMode  = CameraMode::ThirdPerson;
+            g_app.follow.mode = FollowMode::ThirdPerson;
+            g_app.follow.snapTo(car);
+            break;
+    }
+    g_app.firstMouse = true;
+}
+
+static const char* cameraName(CameraMode m) {
+    switch (m) {
+        case CameraMode::ThirdPerson: return "3rd person";
+        case CameraMode::Hood:        return "Hood";
+        default:                      return "Free";
+    }
 }
 
 // ------------------------------------------------------------
@@ -281,9 +352,9 @@ int main() {
         float     startHeading = std::atan2(startDir.z, startDir.x);   // в радиани
         Car car(road.startPosition(), startHeading);
 
-        // Камерата - зад колата и малко отгоре, гледа към нея
-        g_app.camera = Camera(road.startPosition() - startDir * 10.0f + glm::vec3(0, 4.0f, 0),
-                              glm::degrees(startHeading), -15.0f);
+        // Камерата от трето лице - веднага зад колата
+        g_app.follow.snapTo(car);
+        g_app.follow.update(car, terrain, 0.0f);
 
         shader.use();
         shader.setInt("uTexture",  0);
@@ -302,30 +373,40 @@ int main() {
             // влачене на прозореца), физиката не трябва да прави огромна стъпка
             if (dt > 0.05f) dt = 0.05f;
 
-            processInput(window, dt);
+            if (g_app.switchCamera) {
+                cycleCamera(car);
+                g_app.switchCamera = false;
+            }
 
             // ---- Физика на колата ----
             if (g_app.resetCar) {
                 car.reset(road.startPosition(), startHeading);
+                g_app.follow.snapTo(car);
                 g_app.resetCar = false;
             }
             car.update(dt, readCarInput(window), terrain, road);
 
-            glm::vec3 camPos = g_app.camera.position();
-            float ground = terrain.heightAt(camPos.x, camPos.z) + 0.5f;
-            if (camPos.y < ground) {
-                camPos.y = ground;
-                g_app.camera.setPosition(camPos);
+            // ---- Камери ----
+            // Следващата камера се обновява СЛЕД колата - използва новата ѝ позиция
+            g_app.follow.update(car, terrain, dt);
+
+            if (g_app.cameraMode == CameraMode::Free) {
+                processInput(window, dt);
+                glm::vec3 camPos = g_app.camera.position();
+                float ground = terrain.heightAt(camPos.x, camPos.z) + 0.5f;
+                if (camPos.y < ground) {
+                    camPos.y = ground;
+                    g_app.camera.setPosition(camPos);
+                }
             }
 
             fpsTimer += dt; ++frames;
             if (fpsTimer >= 1.0f) {
                 char title[200];
                 std::snprintf(title, sizeof(title),
-                    "Car Simulator | FPS: %d | Speed: %.0f km/h | Steer: %+.0f deg | %s | %s",
+                    "Car Simulator | FPS: %d | Speed: %.0f km/h | Steer: %+.0f deg | %s | Camera: %s",
                     frames, car.speedKmh(), car.steerDeg(),
-                    car.onRoad() ? "Road" : "Grass",
-                    g_app.light.blinn ? "Blinn-Phong" : "Phong");
+                    car.onRoad() ? "Road" : "Grass", cameraName(g_app.cameraMode));
                 glfwSetWindowTitle(window, title);
                 fpsTimer = 0.0f; frames = 0;
             }
@@ -336,10 +417,23 @@ int main() {
 
             float aspect = g_app.height > 0 ? (float)g_app.width / g_app.height : 1.0f;
 
+            // View, Projection и позиция - от активната камера
+            glm::mat4 view, projection;
+            glm::vec3 eye;
+            if (g_app.cameraMode == CameraMode::Free) {
+                view       = g_app.camera.getViewMatrix();
+                projection = g_app.camera.getProjectionMatrix(aspect);
+                eye        = g_app.camera.position();
+            } else {
+                view       = g_app.follow.getViewMatrix();
+                projection = g_app.follow.getProjectionMatrix(aspect);
+                eye        = g_app.follow.position();
+            }
+
             shader.use();
-            shader.setMat4("uView",       g_app.camera.getViewMatrix());
-            shader.setMat4("uProjection", g_app.camera.getProjectionMatrix(aspect));
-            shader.setVec3("uCameraPos",  g_app.camera.position());
+            shader.setMat4("uView",       view);
+            shader.setMat4("uProjection", projection);
+            shader.setVec3("uCameraPos",  eye);
             uploadLights(shader, sun, lampLights, g_app.light);
 
             // Терен
