@@ -32,7 +32,8 @@ CarSimulator/
     ├── Mesh.h/.cpp       VAO/VBO/EBO, примитиви (куб, равнина)
     ├── Texture.h/.cpp    текстури, mipmaps, филтриране
     ├── Road.h/.cpp       писта по Catmull-Rom сплайн
-    └── Terrain.h/.cpp    терен от height map (fBm шум)
+    ├── Terrain.h/.cpp    терен от height map (fBm шум)
+    └── Lighting.h/.cpp   светлини и материали (модел на Phong)
 ```
 
 ## Управление
@@ -42,6 +43,9 @@ CarSimulator/
 | Space / Ctrl | нагоре / надолу |
 | Shift | по-бързо |
 | Мишка / колелце | оглеждане / zoom |
+| 1 / 2 / 3 | ambient / diffuse / specular вкл./изкл. |
+| 4 / 5 | слънце / улични лампи вкл./изкл. |
+| B | Phong ↔ Blinn-Phong |
 | F1 | каркасен режим (wireframe) |
 | Tab | освобождава курсора |
 | Esc | изход |
