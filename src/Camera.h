@@ -34,12 +34,13 @@ public:
     const glm::vec3& position() const { return m_position; }
     const glm::vec3& front()    const { return m_front; }
     float fov() const { return m_fov; }
+    void setPosition(const glm::vec3& p) { m_position = p; }
 
     // --- Настройки ---
     float moveSpeed        = 8.0f;   // единици (метри) в секунда
     float mouseSensitivity = 0.1f;   // градуса на пиксел
     float nearPlane        = 0.1f;
-    float farPlane         = 500.0f;
+    float farPlane         = 800.0f;
 
 private:
     void updateVectors();            // преизчислява front/right/up от yaw и pitch
@@ -48,7 +49,7 @@ private:
     glm::vec3 m_front{0.0f, 0.0f, -1.0f};
     glm::vec3 m_right{1.0f, 0.0f, 0.0f};
     glm::vec3 m_up   {0.0f, 1.0f, 0.0f};
-    const glm::vec3 m_worldUp{0.0f, 1.0f, 0.0f};
+    glm::vec3 m_worldUp{0.0f, 1.0f, 0.0f};   // не е const -> Camera може да се присвоява
 
     float m_yaw;
     float m_pitch;

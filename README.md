@@ -10,6 +10,7 @@
 | GLFW 3.4 | прозорец, контекст, вход от клавиатура/мишка |
 | GLAD | зареждане на OpenGL функциите |
 | GLM 1.0.1 | вектори, матрици, трансформации |
+| stb_image | зареждане на PNG/JPG текстури (external/stb) |
 | CMake 3.16+ | система за компилиране |
 
 GLFW и GLM се изтеглят **автоматично** от CMake при първото конфигуриране (нужен е интернет).
@@ -20,9 +21,30 @@ GLAD вече е включен в `external/glad`.
 CarSimulator/
 ├── CMakeLists.txt
 ├── external/glad/        OpenGL loader (генериран за GL 3.3 Core)
+├── external/stb/         stb_image.h - зареждане на изображения
 ├── assets/shaders/       GLSL шейдъри (.vert, .frag)
-└── src/                  C++ код (main.cpp, Shader.h/.cpp, ...)
+├── assets/textures/      текстури (трева, скала, път)
+├── tools/                generate_textures.py - процедурен генератор на текстурите
+└── src/
+    ├── main.cpp          прозорец, вход, главен цикъл, сцена
+    ├── Shader.h/.cpp     компилиране на шейдъри, uniform-и
+    ├── Camera.h/.cpp     свободна камера (yaw/pitch, lookAt, perspective)
+    ├── Mesh.h/.cpp       VAO/VBO/EBO, примитиви (куб, равнина)
+    ├── Texture.h/.cpp    текстури, mipmaps, филтриране
+    ├── Road.h/.cpp       писта по Catmull-Rom сплайн
+    └── Terrain.h/.cpp    терен от height map (fBm шум)
 ```
+
+## Управление
+| Клавиш | Действие |
+|---|---|
+| W / A / S / D | движение на камерата |
+| Space / Ctrl | нагоре / надолу |
+| Shift | по-бързо |
+| Мишка / колелце | оглеждане / zoom |
+| F1 | каркасен режим (wireframe) |
+| Tab | освобождава курсора |
+| Esc | изход |
 
 ## Настройка на средата – Windows (препоръчително)
 1. Инсталирай **Visual Studio 2022 Community**: https://visualstudio.microsoft.com/
@@ -48,12 +70,12 @@ cmake --build build --config Release
 Linux допълнително изисква: `sudo apt install libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl-dev`
 
 ## Проверка
-Ако се отвори прозорец със **синьо небе и въртящ се цветен куб**, средата е готова.
+Отваря се прозорец с хълмист терен и асфалтова писта; камерата е в началото на пистата.
 В конзолата се отпечатва версията на OpenGL и видеокартата (трябва да е 3.3 или по-нова).
 `ESC` затваря прозореца.
 
 ## Чести проблеми
-- **„Не може да се отвори файл: …shaders/test.vert“** – проектът е преместен след конфигуриране.
+- **„Не може да се отвори файл: …shaders/basic.vert“** или **„Не може да се зареди текстура“** – проектът е преместен след конфигуриране.
   Изтрий папката `out/` (VS) или `build/` и конфигурирай отново.
 - **„Window creation failed“** – драйверите на видеокартата са стари; обнови ги
   (Intel/NVIDIA/AMD). Поддръжка на OpenGL 3.3 има всяка карта след ~2010 г.
