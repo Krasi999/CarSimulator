@@ -35,7 +35,8 @@ target_include_directories(glad PUBLIC external/glad/include)
 # ------------------------------------------------------------------
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 add_executable(CarSimulator ${SOURCES})
-target_include_directories(CarSimulator PRIVATE src)
+# stb_image - зареждане на PNG/JPG (единичен header файл)
+target_include_directories(CarSimulator PRIVATE src external/stb)
 target_link_libraries(CarSimulator PRIVATE glad glfw glm::glm)
 
 # Пътят до папката с шейдъри и текстури - така програмата ги намира
