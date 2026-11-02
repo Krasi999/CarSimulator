@@ -29,16 +29,22 @@ CarSimulator/
     ├── main.cpp          прозорец, вход, главен цикъл, сцена
     ├── Shader.h/.cpp     компилиране на шейдъри, uniform-и
     ├── Camera.h/.cpp     свободна камера (yaw/pitch, lookAt, perspective)
-    ├── Mesh.h/.cpp       VAO/VBO/EBO, примитиви (куб, равнина)
+    ├── Mesh.h/.cpp       VAO/VBO/EBO, примитиви (куб, равнина, сфера, цилиндър)
     ├── Texture.h/.cpp    текстури, mipmaps, филтриране
     ├── Road.h/.cpp       писта по Catmull-Rom сплайн
     ├── Terrain.h/.cpp    терен от height map (fBm шум)
-    └── Lighting.h/.cpp   светлини и материали (модел на Phong)
+    ├── Lighting.h/.cpp   светлини и материали (модел на Phong)
+    ├── Renderer.h/.cpp   drawMesh, режими на оцветяване
+    └── Car.h/.cpp        автомобил: физика + йерархичен модел
 ```
 
 ## Управление
 | Клавиш | Действие |
 |---|---|
+| ↑ / ↓ | газ / спирачка, заден ход |
+| ← / → | волан |
+| H | ръчна спирачка |
+| R | връщане на колата на старта |
 | W / A / S / D | движение на камерата |
 | Space / Ctrl | нагоре / надолу |
 | Shift | по-бързо |

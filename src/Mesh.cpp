@@ -126,4 +126,47 @@ Mesh* createSphere(int segments, int rings) {
     return new Mesh(verts, idx);
 }
 
+// ------------------------------------------------------------
+//  Цилиндър с ос Y: страничната повърхност + два капака.
+//  Страната и капаците имат ОТДЕЛНИ върхове, защото нормалите им
+//  са различни: настрани (cos, 0, sin) за страната, ±Y за капаците.
+// ------------------------------------------------------------
+Mesh* createCylinder(int segments) {
+    const float PI = 3.14159265358979f;
+    std::vector<Vertex> verts;
+    std::vector<unsigned int> idx;
+
+    // --- Страна ---
+    for (int s = 0; s <= segments; ++s) {
+        float a = 2.0f * PI * s / segments;
+        glm::vec3 n(std::cos(a), 0.0f, std::sin(a));
+        float u = float(s) / segments;
+        verts.push_back({{n.x * 0.5f, -0.5f, n.z * 0.5f}, n, {u, 0.0f}});   // долу: 2*s
+        verts.push_back({{n.x * 0.5f,  0.5f, n.z * 0.5f}, n, {u, 1.0f}});   // горе: 2*s+1
+    }
+    for (int s = 0; s < segments; ++s) {
+        unsigned int b0 = 2 * s, t0 = b0 + 1, b1 = b0 + 2, t1 = b0 + 3;
+        idx.insert(idx.end(), {b0, t0, b1,  t0, t1, b1});
+    }
+
+    // --- Капаци (горен: y = +0.5, нормала +Y; долен: y = -0.5, нормала -Y) ---
+    for (int cap = 0; cap < 2; ++cap) {
+        float y  = cap == 0 ? 0.5f : -0.5f;
+        glm::vec3 n(0.0f, cap == 0 ? 1.0f : -1.0f, 0.0f);
+        unsigned int center = static_cast<unsigned int>(verts.size());
+        verts.push_back({{0.0f, y, 0.0f}, n, {0.5f, 0.5f}});
+        for (int s = 0; s <= segments; ++s) {
+            float a = 2.0f * PI * s / segments;
+            float c = std::cos(a), sn = std::sin(a);
+            verts.push_back({{c * 0.5f, y, sn * 0.5f}, n, {0.5f + c * 0.5f, 0.5f + sn * 0.5f}});
+        }
+        for (int s = 0; s < segments; ++s) {
+            unsigned int p0 = center + 1 + s, p1 = p0 + 1;
+            if (cap == 0) idx.insert(idx.end(), {center, p1, p0});   // гледано отгоре - CCW
+            else          idx.insert(idx.end(), {center, p0, p1});   // гледано отдолу - CCW
+        }
+    }
+    return new Mesh(verts, idx);
+}
+
 } // namespace Primitives
