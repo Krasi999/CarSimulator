@@ -47,6 +47,10 @@ void FollowCamera::addOrbit(float dYawDeg, float dPitchDeg) {
     m_orbitPitch  = std::clamp(m_orbitPitch + dPitchDeg, -12.0f, 60.0f);
 }
 
+void FollowCamera::addShake(float amount) {
+    m_shake = std::max(m_shake, std::clamp(amount, 0.0f, 1.0f));
+}
+
 void FollowCamera::zoom(float scroll) {
     m_distance = std::clamp(m_distance - scroll * 0.7f, 4.0f, 16.0f);
 }
@@ -110,6 +114,14 @@ void FollowCamera::update(const Car& car, const Terrain& terrain, float dt) {
     // 6) Гледа малко пред колата - вижда се повече от пътя напред
     m_target = pivot + dirFlat * kLookAhead;
     m_up     = glm::vec3(0.0f, 1.0f, 0.0f);
+
+    // 7) Разклащане след удар: бързо трептене (синуси с различни честоти),
+    //    чиято амплитуда затихва експоненциално
+    m_time  += dt;
+    m_shake *= std::exp(-5.0f * dt);
+    glm::vec3 jitter(std::sin(m_time * 53.0f), std::sin(m_time * 71.0f + 1.3f),
+                     std::sin(m_time * 61.0f + 2.1f));
+    m_position += jitter * (0.25f * m_shake);
 }
 
 glm::mat4 FollowCamera::getViewMatrix() const {

@@ -41,6 +41,39 @@ Mesh::~Mesh() {
     glDeleteVertexArrays(1, &m_vao);
     glDeleteBuffers(1, &m_vbo);
     glDeleteBuffers(1, &m_ebo);
+    if (m_instanceVbo) glDeleteBuffers(1, &m_instanceVbo);
+}
+
+// ------------------------------------------------------------
+//  Инстанциране: допълнителен VBO с по една mat4 на копие.
+//  mat4 заема 4 последователни атрибута (по един vec4 за колона):
+//  locations 3, 4, 5, 6 във vertex шейдъра.
+//  glVertexAttribDivisor(loc, 1) казва: "сменяй стойността веднъж
+//  на КОПИЕ, а не за всеки връх".
+// ------------------------------------------------------------
+void Mesh::setInstances(const std::vector<glm::mat4>& matrices) {
+    if (!m_instanceVbo) glGenBuffers(1, &m_instanceVbo);
+    m_instanceCount = static_cast<GLsizei>(matrices.size());
+
+    glBindVertexArray(m_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, m_instanceVbo);
+    glBufferData(GL_ARRAY_BUFFER, matrices.size() * sizeof(glm::mat4),
+                 matrices.data(), GL_STATIC_DRAW);
+
+    for (int col = 0; col < 4; ++col) {
+        GLuint loc = 3 + col;
+        glEnableVertexAttribArray(loc);
+        glVertexAttribPointer(loc, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4),
+                              (void*)(sizeof(glm::vec4) * col));
+        glVertexAttribDivisor(loc, 1);
+    }
+    glBindVertexArray(0);
+}
+
+void Mesh::drawInstanced() const {
+    glBindVertexArray(m_vao);
+    glDrawElementsInstanced(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, nullptr, m_instanceCount);
+    glBindVertexArray(0);
 }
 
 void Mesh::draw() const {
@@ -165,6 +198,44 @@ Mesh* createCylinder(int segments) {
             if (cap == 0) idx.insert(idx.end(), {center, p1, p0});   // гледано отгоре - CCW
             else          idx.insert(idx.end(), {center, p0, p1});   // гледано отдолу - CCW
         }
+    }
+    return new Mesh(verts, idx);
+}
+
+// ------------------------------------------------------------
+//  Конус с ос Y: основа при y = -0.5 (радиус 0.5), връх при y = +0.5.
+//  Нормалата на страничната повърхност е наклонена нагоре:
+//  за радиус R и височина H тя е (cos a * H, R, sin a * H) -> (cos a, 0.5, sin a).
+// ------------------------------------------------------------
+Mesh* createCone(int segments) {
+    const float PI = 3.14159265358979f;
+    std::vector<Vertex> verts;
+    std::vector<unsigned int> idx;
+
+    // --- Страна: за всеки сегмент - връх в основата и собствен връх на върха ---
+    for (int s = 0; s <= segments; ++s) {
+        float a = 2.0f * PI * s / segments;
+        glm::vec3 n = glm::normalize(glm::vec3(std::cos(a), 0.5f, std::sin(a)));
+        float u = float(s) / segments;
+        verts.push_back({{std::cos(a) * 0.5f, -0.5f, std::sin(a) * 0.5f}, n, {u, 0.0f}});
+        verts.push_back({{0.0f, 0.5f, 0.0f}, n, {u, 1.0f}});
+    }
+    for (int s = 0; s < segments; ++s) {
+        unsigned int b0 = 2 * s, apex = b0 + 1, b1 = b0 + 2;
+        idx.insert(idx.end(), {b0, apex, b1});
+    }
+
+    // --- Основа (нормала -Y) ---
+    unsigned int center = static_cast<unsigned int>(verts.size());
+    verts.push_back({{0.0f, -0.5f, 0.0f}, {0, -1, 0}, {0.5f, 0.5f}});
+    for (int s = 0; s <= segments; ++s) {
+        float a = 2.0f * PI * s / segments;
+        verts.push_back({{std::cos(a) * 0.5f, -0.5f, std::sin(a) * 0.5f}, {0, -1, 0},
+                         {0.5f + std::cos(a) * 0.5f, 0.5f + std::sin(a) * 0.5f}});
+    }
+    for (int s = 0; s < segments; ++s) {
+        unsigned int p0 = center + 1 + s;
+        idx.insert(idx.end(), {center, p0, p0 + 1});
     }
     return new Mesh(verts, idx);
 }

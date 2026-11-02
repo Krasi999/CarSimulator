@@ -33,6 +33,8 @@ public:
     void addOrbit(float dYawDeg, float dPitchDeg);
     // Колелце на мишката: приближаване / отдалечаване
     void zoom(float scroll);
+    // Разклащане при удар: 0..1
+    void addShake(float amount);
 
     glm::mat4 getViewMatrix() const;
     glm::mat4 getProjectionMatrix(float aspectRatio) const;
@@ -59,4 +61,7 @@ private:
     float m_orbitPitch = 0.0f;
 
     float m_distance = 7.5f;  // метри зад колата
+
+    float m_shake = 0.0f;     // сила на разклащането (затихва)
+    float m_time  = 0.0f;
 };

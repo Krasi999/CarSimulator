@@ -23,5 +23,11 @@ enum ShadeMode {
 void drawMesh(const Shader& shader, const Mesh& mesh,
               const glm::mat4& model, const Material& material, int mode);
 
+// Рисува всички копия на mesh (инстанциране). partLocal е допълнителна
+// матрица на частта (напр. короната е над ствола), обща за всички копия:
+//     Model_на_копие_i = Instance_i * partLocal
+void drawMeshInstanced(const Shader& shader, const Mesh& mesh,
+                       const glm::mat4& partLocal, const Material& material, int mode);
+
 // Помощна: матрица на част от модел - преместване до center и мащабиране до size
 glm::mat4 partTransform(const glm::vec3& center, const glm::vec3& size);
