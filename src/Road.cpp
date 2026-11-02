@@ -110,3 +110,20 @@ glm::vec3 Road::startDirection() const {
     glm::vec2 d = glm::normalize(m_center[1] - m_center[0]);
     return {d.x, 0.0f, d.y};
 }
+
+glm::vec3 Road::centerPoint(int i) const {
+    const glm::vec2& c = m_center[(i % sampleCount() + sampleCount()) % sampleCount()];
+    return {c.x, kSurfaceY, c.y};
+}
+
+glm::vec3 Road::direction(int i) const {
+    const int n = sampleCount();
+    glm::vec2 d = m_center[(i + 1) % n] - m_center[(i - 1 + n) % n];
+    d = glm::normalize(d);
+    return {d.x, 0.0f, d.y};
+}
+
+glm::vec3 Road::rightVector(int i) const {
+    glm::vec3 d = direction(i);
+    return {-d.z, 0.0f, d.x};       // същото завъртане на 90° като в конструктора
+}
