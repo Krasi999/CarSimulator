@@ -1,9 +1,15 @@
 // ============================================================
 //  Интерактивен 3D автомобилен симулатор
-//  Етап 3: Модел на осветяване на Phong - слънце (насочена светлина),
-//          улични лампи (точкови светлини), материали
+//  Етап 4: Автомобил - йерархичен модел и физика на движението
 //
-//  Управление:
+//  Управление на колата:
+//    Стрелка нагоре   - газ
+//    Стрелка надолу   - спирачка / заден ход
+//    Стрелки ляво/дясно - волан
+//    H                - ръчна спирачка
+//    R                - връщане на старта
+//
+//  Свободна камера:
 //    W/A/S/D      - напред / наляво / назад / надясно
 //    Space / Ctrl - нагоре / надолу
 //    Shift        - по-бързо движение
@@ -36,6 +42,8 @@
 #include "Road.h"
 #include "Terrain.h"
 #include "Lighting.h"
+#include "Renderer.h"
+#include "Car.h"
 
 // ------------------------------------------------------------
 //  Глобално състояние на приложението (достъпно от callback-ите)
@@ -48,11 +56,9 @@ struct AppState {
     bool   mouseCaptured = true;
     bool   wireframe     = false;
     LightingToggles light;          // кои компоненти на осветлението са включени
+    bool   resetCar      = false;   // заявка за връщане на колата на старта (клавиш R)
 };
 static AppState g_app;
-
-// Режими на оцветяване - съвпадат с uMode във basic.frag
-enum ShadeMode { MODE_COLOR = 0, MODE_TEXTURE = 1, MODE_TERRAIN = 2 };
 
 // ------------------------------------------------------------
 //  Callback функции
@@ -106,6 +112,7 @@ static void keyCallback(GLFWwindow* window, int key, int, int action, int) {
         case GLFW_KEY_4: l.sun      = !l.sun;      break;
         case GLFW_KEY_5: l.lamps    = !l.lamps;    break;
         case GLFW_KEY_B: l.blinn    = !l.blinn;    break;
+        case GLFW_KEY_R: g_app.resetCar = true;    break;
         default: break;
     }
 }
@@ -124,16 +131,17 @@ static void processInput(GLFWwindow* window, float dt) {
 }
 
 // ------------------------------------------------------------
-//  Рисуване на един обект: Model матрица + нормална матрица + материал
+//  Команди към колата от клавиатурата.
+//  Клавиатурата дава 0 или 1; Car сам изглажда волана.
 // ------------------------------------------------------------
-static void drawMesh(const Shader& shader, const Mesh& mesh,
-                     const glm::mat4& model, const Material& material, int mode) {
-    shader.setMat4("uModel", model);
-    // Нормалната матрица се изчислява ВЕДНЪЖ за обекта тук, на CPU
-    shader.setMat3("uNormalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
-    uploadMaterial(shader, material);
-    shader.setInt("uMode", mode);
-    mesh.draw();
+static CarInput readCarInput(GLFWwindow* window) {
+    auto down = [&](int key) { return glfwGetKey(window, key) == GLFW_PRESS; };
+    CarInput in;
+    in.throttle  = down(GLFW_KEY_UP)   ? 1.0f : 0.0f;
+    in.brake     = down(GLFW_KEY_DOWN) ? 1.0f : 0.0f;
+    in.steer     = (down(GLFW_KEY_RIGHT) ? 1.0f : 0.0f) - (down(GLFW_KEY_LEFT) ? 1.0f : 0.0f);
+    in.handbrake = down(GLFW_KEY_H);
+    return in;
 }
 
 // ------------------------------------------------------------
@@ -146,10 +154,6 @@ struct StreetLamp {
 // Части на лампата в ЛОКАЛНИ координати: основата е в (0,0,0),
 // стълбът е по +Y, рамото излиза по +X (към пътя).
 static const glm::vec3 kLampLightLocal(1.9f, 5.65f, 0.0f);   // къде е крушката
-
-static glm::mat4 partTransform(const glm::vec3& center, const glm::vec3& size) {
-    return glm::scale(glm::translate(glm::mat4(1.0f), center), size);
-}
 
 int main() {
     // ---- Инициализация на GLFW и прозорец ----
@@ -197,6 +201,8 @@ int main() {
         // ---- Геометрия ----
         std::unique_ptr<Mesh> cube  (Primitives::createCube());
         std::unique_ptr<Mesh> sphere(Primitives::createSphere());
+        std::unique_ptr<Mesh> cylinder(Primitives::createCylinder());
+        std::unique_ptr<Mesh> quad  (Primitives::createPlane(1.0f));   // за сянката на колата
 
         const std::vector<glm::vec2> trackPoints = {
             {-120.0f,  -60.0f}, { -40.0f,  -95.0f}, {  60.0f,  -85.0f}, { 135.0f,  -45.0f},
@@ -270,10 +276,14 @@ int main() {
 
         std::cout << "Track length: " << road.length() << " m, lamps: " << lamps.size() << "\n";
 
-        glm::vec3 startDir = road.startDirection();
-        float startYaw = glm::degrees(std::atan2(startDir.z, startDir.x));
-        g_app.camera = Camera(road.startPosition() - startDir * 8.0f + glm::vec3(0, 3.0f, 0),
-                              startYaw, -8.0f);
+        // ---- Кола на старта на пистата ----
+        glm::vec3 startDir     = road.startDirection();
+        float     startHeading = std::atan2(startDir.z, startDir.x);   // в радиани
+        Car car(road.startPosition(), startHeading);
+
+        // Камерата - зад колата и малко отгоре, гледа към нея
+        g_app.camera = Camera(road.startPosition() - startDir * 10.0f + glm::vec3(0, 4.0f, 0),
+                              glm::degrees(startHeading), -15.0f);
 
         shader.use();
         shader.setInt("uTexture",  0);
@@ -288,8 +298,18 @@ int main() {
             float now = static_cast<float>(glfwGetTime());
             float dt  = now - lastFrame;
             lastFrame = now;
+            // Ограничение на dt: ако програмата "замръзне" за момент (напр. при
+            // влачене на прозореца), физиката не трябва да прави огромна стъпка
+            if (dt > 0.05f) dt = 0.05f;
 
             processInput(window, dt);
+
+            // ---- Физика на колата ----
+            if (g_app.resetCar) {
+                car.reset(road.startPosition(), startHeading);
+                g_app.resetCar = false;
+            }
+            car.update(dt, readCarInput(window), terrain, road);
 
             glm::vec3 camPos = g_app.camera.position();
             float ground = terrain.heightAt(camPos.x, camPos.z) + 0.5f;
@@ -300,13 +320,12 @@ int main() {
 
             fpsTimer += dt; ++frames;
             if (fpsTimer >= 1.0f) {
-                const LightingToggles& l = g_app.light;
                 char title[200];
                 std::snprintf(title, sizeof(title),
-                    "Car Simulator | FPS: %d | %s | Amb:%s Dif:%s Spec:%s | Sun:%s Lamps:%s",
-                    frames, l.blinn ? "Blinn-Phong" : "Phong",
-                    l.ambient ? "on" : "off", l.diffuse ? "on" : "off", l.specular ? "on" : "off",
-                    l.sun ? "on" : "off", l.lamps ? "on" : "off");
+                    "Car Simulator | FPS: %d | Speed: %.0f km/h | Steer: %+.0f deg | %s | %s",
+                    frames, car.speedKmh(), car.steerDeg(),
+                    car.onRoad() ? "Road" : "Grass",
+                    g_app.light.blinn ? "Blinn-Phong" : "Phong");
                 glfwSetWindowTitle(window, title);
                 fpsTimer = 0.0f; frames = 0;
             }
@@ -363,6 +382,10 @@ int main() {
             // Демонстрационни сфери
             for (const DemoSphere& s : spheres)
                 drawMesh(shader, *sphere, s.model, s.mat, MODE_COLOR);
+
+            // Колата - последна, защото сянката ѝ е полупрозрачна и трябва
+            // да се смеси с вече нарисувания път/терен под нея
+            car.draw(shader, *cube, *cylinder, *quad);
 
             glfwSwapBuffers(window);
             glfwPollEvents();
