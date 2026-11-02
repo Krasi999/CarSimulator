@@ -32,6 +32,13 @@ public:
     glm::vec3 startPosition()  const;
     glm::vec3 startDirection() const;
 
+    // Достъп до точките на централната линия - за поставяне на обекти
+    // покрай пътя (улични лампи, дървета, ...)
+    int       sampleCount() const { return static_cast<int>(m_center.size()); }
+    glm::vec3 centerPoint(int i) const;   // точка i от централната линия
+    glm::vec3 direction(int i)   const;   // единична посока на пътя в точка i
+    glm::vec3 rightVector(int i) const;   // единичен вектор надясно от посоката
+
     static constexpr float kSurfaceY = 0.05f;   // пътят е малко над терена
 
 private:
