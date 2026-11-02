@@ -1,6 +1,13 @@
 // ============================================================
 //  Интерактивен 3D автомобилен симулатор
-//  Етап 6: Обекти (дървета, сгради, мантинели, конуси) и колизии
+//  Етап 7: Ден и нощ - движещо се слънце, небесна сфера,
+//          фарове (прожекторни светлини), лампи и прозорци нощем
+//
+//  Ден и нощ:
+//    N            - следващ момент: обед -> залез -> нощ -> изгрев
+//    T            - пауза / пускане на времето
+//    [ / ]        - превъртане на времето назад / напред (задръж)
+//    L            - фарове: автоматично -> включени -> изключени
 //
 //  Камери:
 //    C            - смяна: трето лице -> над капака -> свободна -> ...
@@ -24,8 +31,8 @@
 //    Мишка        - оглеждане
 //    Колелце      - приближаване (промяна на FOV)
 //    1 / 2 / 3    - ambient / diffuse / specular компонента вкл./изкл.
-//    4            - слънце вкл./изкл.
-//    5            - улични лампи вкл./изкл.
+//    4            - слънце / луна вкл./изкл.
+//    5            - улични лампи разрешени / забранени (светят само нощем)
 //    B            - Phong <-> Blinn-Phong
 //    F1           - каркасен режим (wireframe) вкл./изкл.
 //    Tab          - освобождаване / прихващане на курсора
@@ -54,6 +61,8 @@
 #include "Car.h"
 #include "FollowCamera.h"
 #include "World.h"
+#include "DayNight.h"
+#include "Sky.h"
 
 // ------------------------------------------------------------
 //  Глобално състояние на приложението (достъпно от callback-ите)
@@ -72,6 +81,8 @@ struct AppState {
     bool   mouseCaptured = true;
     bool   wireframe     = false;
     LightingToggles light;          // кои компоненти на осветлението са включени
+    DayNight        dayNight;       // час от денонощието и цветовете, които зависят от него
+    int             headlightMode = 0;   // 0 - автоматично, 1 - включени, 2 - изключени
     bool   resetCar      = false;   // заявка за връщане на колата на старта (клавиш R)
 };
 static AppState g_app;
@@ -137,6 +148,9 @@ static void keyCallback(GLFWwindow* window, int key, int, int action, int) {
         case GLFW_KEY_B: l.blinn    = !l.blinn;    break;
         case GLFW_KEY_R: g_app.resetCar = true;    break;
         case GLFW_KEY_C: g_app.switchCamera = true; break;
+        case GLFW_KEY_N: g_app.dayNight.nextPreset();  break;
+        case GLFW_KEY_T: g_app.dayNight.togglePause(); break;
+        case GLFW_KEY_L: g_app.headlightMode = (g_app.headlightMode + 1) % 3; break;
         default: break;
     }
 }
@@ -276,8 +290,8 @@ int main() {
         Material grassMat;  grassMat.specular = 0.05f; grassMat.shininess = 8.0f;
         Material roadMat;   roadMat.specular  = 0.25f; roadMat.shininess  = 24.0f;
 
-        // ---- Слънце ----
-        DirLight sun;
+        // ---- Небе ----
+        Sky sky;
 
         // ---- Обекти покрай пистата: дървета, сгради, лампи, мантинели, конуси ----
         World world(road, terrain);
@@ -333,6 +347,16 @@ int main() {
             }
             world.update(dt);
 
+            // ---- Ден и нощ ----
+            if (glfwGetKey(window, GLFW_KEY_RIGHT_BRACKET) == GLFW_PRESS) g_app.dayNight.scrub( 3.0f * frameTime);
+            if (glfwGetKey(window, GLFW_KEY_LEFT_BRACKET)  == GLFW_PRESS) g_app.dayNight.scrub(-3.0f * frameTime);
+            g_app.dayNight.update(dt);
+
+            const float night       = g_app.dayNight.nightFactor();
+            const bool  lampsOn     = g_app.light.lamps && night > 0.3f;
+            const bool  headlightsOn = g_app.headlightMode == 1 ||
+                                      (g_app.headlightMode == 0 && night > 0.3f);
+
             // ---- Камери ----
             // Следващата камера се обновява СЛЕД колата - използва новата ѝ позиция
             g_app.follow.update(car, terrain, dt);
@@ -349,17 +373,23 @@ int main() {
 
             fpsTimer += frameTime; ++frames;   // FPS - по реалното време, не по dt
             if (fpsTimer >= 1.0f) {
-                char title[200];
+                static const char* hlNames[3] = {"auto", "on", "off"};
+                float hr = g_app.dayNight.hour();
+                char title[220];
                 std::snprintf(title, sizeof(title),
-                    "Car Simulator | FPS: %d | Speed: %.0f km/h | %s | Crashes: %d | Camera: %s",
-                    frames, car.speedKmh(), car.onRoad() ? "Road" : "Grass",
-                    crashes, cameraName(g_app.cameraMode));
+                    "Car Simulator | FPS: %d | %02d:%02d%s | Speed: %.0f km/h | Crashes: %d | "
+                    "Headlights: %s | Camera: %s",
+                    frames, int(hr), int((hr - int(hr)) * 60.0f),
+                    g_app.dayNight.paused() ? " (paused)" : "",
+                    car.speedKmh(), crashes, hlNames[g_app.headlightMode],
+                    cameraName(g_app.cameraMode));
                 glfwSetWindowTitle(window, title);
                 fpsTimer = 0.0f; frames = 0;
             }
 
             // ---- Рисуване ----
-            glClearColor(0.62f, 0.78f, 0.95f, 1.0f);
+            const glm::vec3 fog = g_app.dayNight.horizonColor();   // мъглата = цвета на хоризонта
+            glClearColor(fog.r, fog.g, fog.b, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             float aspect = g_app.height > 0 ? (float)g_app.width / g_app.height : 1.0f;
@@ -381,7 +411,18 @@ int main() {
             shader.setMat4("uView",       view);
             shader.setMat4("uProjection", projection);
             shader.setVec3("uCameraPos",  eye);
-            uploadLights(shader, sun, world.lampLights(), g_app.light);
+            shader.setVec3("uFogColor",   fog);
+
+            // Светлини: слънце/луна, лампите (само нощем), фаровете (ако са включени)
+            static const std::vector<PointLight> noLamps;
+            std::vector<SpotLight> spots;
+            if (headlightsOn) {
+                SpotLight left, right;
+                car.headlights(left, right);
+                spots = {left, right};
+            }
+            uploadLights(shader, g_app.dayNight.light(),
+                         lampsOn ? world.lampLights() : noLamps, spots, g_app.light);
 
             // Терен
             grassTex.bind(0);
@@ -407,11 +448,17 @@ int main() {
             glDisable(GL_POLYGON_OFFSET_FILL);
 
             // Дървета, сгради, лампи, мантинели, бали, конуси
-            world.draw(shader, g_app.light.lamps);
+            world.draw(shader, lampsOn, night);
+
+            // Небето - след непрозрачните обекти: пикселите, вече закрити от
+            // терена/дърветата, не минават теста за дълбочина и не се изчисляват
+            sky.draw(view, projection, g_app.dayNight);
 
             // Колата - последна, защото сянката ѝ е полупрозрачна и трябва
-            // да се смеси с вече нарисувания път/терен под нея
-            car.draw(shader, *cube, *cylinder, *quad);
+            // да се смеси с вече нарисувания път/терен под нея.
+            // sky.draw() смени шейдъра, затова отново активираме основния.
+            shader.use();
+            car.draw(shader, *cube, *cylinder, *quad, headlightsOn);
 
             glfwSwapBuffers(window);
             glfwPollEvents();
