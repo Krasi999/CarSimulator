@@ -16,6 +16,7 @@
 #include <glm/glm.hpp>
 
 #include "Collision.h"
+#include "Lighting.h"
 
 class Shader;
 class Mesh;
@@ -35,8 +36,12 @@ public:
     Car(const glm::vec3& position, float headingRadians);
 
     void update(float dt, const CarInput& input, const Terrain& terrain, const Road& road);
+    // lightsOn - светят ли фаровете (нощем)
     void draw(const Shader& shader, const Mesh& cube, const Mesh& cylinder,
-              const Mesh& plane) const;
+              const Mesh& plane, bool lightsOn) const;
+
+    // Двата фара като прожекторни светлини (в световни координати)
+    void headlights(SpotLight& left, SpotLight& right) const;
 
     void reset(const glm::vec3& position, float headingRadians);
 

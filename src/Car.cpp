@@ -216,8 +216,22 @@ glm::mat4 Car::modelMatrix() const {
 //              ├─ гума
 //              └─ джанта (2 спици)
 // ============================================================
+// ------------------------------------------------------------
+//  Фарове: позицията е в локалните координати на колата (предната
+//  броня), превърната в световна с матрицата на колата. Посоката е
+//  "напред", наклонена леко надолу към пътя (както при истинските фарове).
+// ------------------------------------------------------------
+void Car::headlights(SpotLight& left, SpotLight& right) const {
+    const glm::mat4 m = modelMatrix();
+    glm::vec3 dir = glm::normalize(m_forward - m_up * 0.07f);   // ~4° надолу
+
+    left.position  = glm::vec3(m * glm::vec4(2.25f, 0.68f, -0.62f, 1.0f));
+    right.position = glm::vec3(m * glm::vec4(2.25f, 0.68f,  0.62f, 1.0f));
+    left.direction = right.direction = dir;
+}
+
 void Car::draw(const Shader& shader, const Mesh& cube, const Mesh& cylinder,
-               const Mesh& plane) const {
+               const Mesh& plane, bool lightsOn) const {
     const glm::mat4 car = modelMatrix();
 
     // ---- Материали ----
@@ -226,9 +240,13 @@ void Car::draw(const Shader& shader, const Mesh& cube, const Mesh& cylinder,
     Material glass;   glass.color  = {0.04f, 0.06f, 0.09f}; glass.specular = 1.0f;  glass.shininess = 128.0f;
     Material tire;    tire.color   = {0.04f, 0.04f, 0.04f}; tire.specular = 0.05f;  tire.shininess = 8.0f;
     Material rim;     rim.color    = {0.70f, 0.72f, 0.75f}; rim.specular = 0.8f;    rim.shininess = 64.0f;
-    Material head;    head.color   = {0.9f, 0.9f, 0.85f};   head.emissive = {0.35f, 0.35f, 0.32f};
+    Material head;    head.color   = {0.9f, 0.9f, 0.85f};
+    head.emissive = lightsOn ? glm::vec3(1.6f, 1.55f, 1.4f) : glm::vec3(0.35f, 0.35f, 0.32f);
     Material tail;    tail.color   = {0.5f, 0.02f, 0.02f};
-    tail.emissive = m_braking ? glm::vec3(1.0f, 0.05f, 0.05f) : glm::vec3(0.25f, 0.0f, 0.0f);
+    // Стопове: силно при спиране, по-слабо като габарити нощем
+    tail.emissive = m_braking ? glm::vec3(1.2f, 0.05f, 0.05f)
+                  : lightsOn  ? glm::vec3(0.6f, 0.02f, 0.02f)
+                              : glm::vec3(0.25f, 0.0f, 0.0f);
     Material shadow;  shadow.color = glm::vec3(0.0f); shadow.specular = 0.0f;
 
     // ---- Сянка: полупрозрачен правоъгълник на земята под колата ----

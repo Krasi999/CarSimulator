@@ -38,7 +38,8 @@ public:
     // Връща най-силния удар в този кадър (m/s), 0 ако няма удар.
     float collide(Car& car);
 
-    void draw(const Shader& shader, bool lampsOn) const;
+    // lampsOn - светят ли лампите; night - 0 (ден) .. 1 (нощ) за прозорците
+    void draw(const Shader& shader, bool lampsOn, float night) const;
 
     const std::vector<PointLight>& lampLights() const { return m_lampLights; }
     int treeCount() const { return static_cast<int>(m_pineCount + m_oakCount); }

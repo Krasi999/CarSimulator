@@ -5,7 +5,8 @@
 #include <string>
 
 void uploadLights(const Shader& shader, const DirLight& sun,
-                  const std::vector<PointLight>& lamps, const LightingToggles& t) {
+                  const std::vector<PointLight>& lamps, const std::vector<SpotLight>& spots,
+                  const LightingToggles& t) {
     // Слънце. Изключеното слънце = черна светлина (без да се променя шейдърът).
     shader.setVec3("uSun.direction", glm::normalize(sun.direction));
     shader.setVec3("uSun.color",     t.sun ? sun.color : glm::vec3(0.0f));
@@ -22,6 +23,21 @@ void uploadLights(const Shader& shader, const DirLight& sun,
         shader.setFloat((base + "constant").c_str(),  lamps[i].constant);
         shader.setFloat((base + "linear").c_str(),    lamps[i].linear);
         shader.setFloat((base + "quadratic").c_str(), lamps[i].quadratic);
+    }
+
+    // Прожекторни светлини (фаровете на колата)
+    int spotCount = std::min<int>(static_cast<int>(spots.size()), kMaxSpotLights);
+    shader.setInt("uNumSpotLights", spotCount);
+    for (int i = 0; i < spotCount; ++i) {
+        std::string base = "uSpotLights[" + std::to_string(i) + "].";
+        shader.setVec3 ((base + "position").c_str(),    spots[i].position);
+        shader.setVec3 ((base + "direction").c_str(),   spots[i].direction);
+        shader.setVec3 ((base + "color").c_str(),       spots[i].color);
+        shader.setFloat((base + "innerCutoff").c_str(), spots[i].innerCutoff);
+        shader.setFloat((base + "outerCutoff").c_str(), spots[i].outerCutoff);
+        shader.setFloat((base + "constant").c_str(),    spots[i].constant);
+        shader.setFloat((base + "linear").c_str(),      spots[i].linear);
+        shader.setFloat((base + "quadratic").c_str(),   spots[i].quadratic);
     }
 
     // Превключватели: всеки компонент се умножава по 1 или 0

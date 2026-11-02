@@ -331,17 +331,19 @@ float World::collide(Car& car) {
 // ============================================================
 //  Рисуване
 // ============================================================
-void World::draw(const Shader& shader, bool lampsOn) const {
+void World::draw(const Shader& shader, bool lampsOn, float night) const {
     const Material metal  = makeMaterial({0.35f, 0.37f, 0.40f}, 0.6f, 64.0f);
     const Material rail   = makeMaterial({0.72f, 0.74f, 0.78f}, 0.7f, 48.0f);
     const Material bulb   = makeMaterial({1.0f, 0.95f, 0.8f}, 0.0f, 1.0f,
-                                          lampsOn ? glm::vec3(1.0f, 0.9f, 0.6f) : glm::vec3(0.0f));
+                                          lampsOn ? glm::vec3(1.6f, 1.4f, 0.9f) : glm::vec3(0.0f));
     const Material bark   = makeMaterial({0.33f, 0.22f, 0.13f}, 0.05f, 8.0f);
     const Material needle = makeMaterial({0.12f, 0.30f, 0.14f}, 0.10f, 16.0f);
     const Material leaves = makeMaterial({0.22f, 0.45f, 0.16f}, 0.10f, 16.0f);
     const Material roof   = makeMaterial({0.45f, 0.18f, 0.14f}, 0.2f, 16.0f);
     const Material door   = makeMaterial({0.30f, 0.20f, 0.12f}, 0.2f, 16.0f);
     const Material window = makeMaterial({0.10f, 0.14f, 0.20f}, 1.0f, 128.0f);
+    Material litWindow    = window;           // светещ прозорец нощем (топла светлина)
+    litWindow.emissive    = glm::vec3(1.0f, 0.78f, 0.42f) * night;
     const Material orange = makeMaterial({1.0f, 0.38f, 0.05f}, 0.4f, 32.0f);
     const Material white  = makeMaterial({0.95f, 0.95f, 0.95f}, 0.4f, 32.0f);
     const Material black  = makeMaterial({0.08f, 0.08f, 0.08f}, 0.1f, 8.0f);
@@ -386,9 +388,13 @@ void World::draw(const Shader& shader, bool lampsOn) const {
                  door, MODE_COLOR);
         for (float x = -len * 0.5f + 1.8f; x < len * 0.5f - 1.0f; x += 2.6f) {
             if (std::abs(x) < 1.2f) continue;               // място за вратата
-            for (float y = ground + 1.6f; y < top - 1.0f; y += 2.2f)
+            for (float y = ground + 1.6f; y < top - 1.0f; y += 2.2f) {
+                // Около 60% от прозорците светят нощем. Кои - определя
+                // "хеш" от позицията, за да е винаги едно и също.
+                float hsh = std::fmod(std::abs(std::sin(x * 12.9898f + y * 78.233f + b.size.x) * 43758.5453f), 1.0f);
                 drawMesh(shader, *m_cube, b.frame * partTransform({x, y, zFace}, {1.1f, 1.1f, 0.06f}),
-                         window, MODE_COLOR);
+                         hsh < 0.6f ? litWindow : window, MODE_COLOR);
+            }
         }
     }
 
