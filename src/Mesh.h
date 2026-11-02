@@ -42,4 +42,5 @@ private:
 namespace Primitives {
     Mesh* createCube();                                 // куб 1x1x1 с център (0,0,0)
     Mesh* createPlane(float size, float uvRepeat = 1);  // хоризонтална равнина size x size
+    Mesh* createSphere(int segments = 32, int rings = 16); // сфера с диаметър 1
 }

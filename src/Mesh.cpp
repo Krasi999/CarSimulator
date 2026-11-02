@@ -1,5 +1,6 @@
 #include "Mesh.h"
 
+#include <cmath>
 #include <cstddef>   // offsetof
 
 Mesh::Mesh(const std::vector<Vertex>& vertices, const std::vector<unsigned int>& indices)
@@ -91,6 +92,37 @@ Mesh* createPlane(float size, float uvRepeat) {
         {{-h, 0, -h}, {0, 1, 0}, {0,        uvRepeat}},
     };
     std::vector<unsigned int> idx = {0, 1, 2, 2, 3, 0};
+    return new Mesh(verts, idx);
+}
+
+// ------------------------------------------------------------
+//  UV сфера: "паралели" (rings) и "меридиани" (segments), както
+//  географските координати. phi - ъгъл от северния полюс (0..PI),
+//  theta - ъгъл около оста Y (0..2PI).
+//  При сфера с център (0,0,0) нормалата е просто посоката към върха.
+// ------------------------------------------------------------
+Mesh* createSphere(int segments, int rings) {
+    const float PI = 3.14159265358979f;
+    std::vector<Vertex> verts;
+    std::vector<unsigned int> idx;
+
+    for (int r = 0; r <= rings; ++r) {
+        float phi = PI * r / rings;
+        for (int s = 0; s <= segments; ++s) {
+            float theta = 2.0f * PI * s / segments;
+            glm::vec3 n(std::sin(phi) * std::cos(theta),
+                        std::cos(phi),
+                        std::sin(phi) * std::sin(theta));
+            verts.push_back({n * 0.5f, n, {float(s) / segments, 1.0f - float(r) / rings}});
+        }
+    }
+    for (int r = 0; r < rings; ++r) {
+        for (int s = 0; s < segments; ++s) {
+            unsigned int a = r * (segments + 1) + s;   // текущ паралел
+            unsigned int b = a + segments + 1;         // следващ (по-долен) паралел
+            idx.insert(idx.end(), {a, a + 1, b,  a + 1, b + 1, b});
+        }
+    }
     return new Mesh(verts, idx);
 }
 
