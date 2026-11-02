@@ -1,0 +1,45 @@
+#pragma once
+// ============================================================
+//  Mesh - геометрия, качена във видеопаметта (GPU).
+//
+//  Всеки връх (Vertex) съдържа:
+//    position - позиция в локалните координати на обекта
+//    normal   - нормала (нужна за осветлението)
+//    uv       - текстурни координати (за текстурирането)
+//
+//  OpenGL обекти:
+//    VBO (Vertex Buffer Object)  - масивът с върховете
+//    EBO (Element Buffer Object) - индексите на триъгълниците
+//    VAO (Vertex Array Object)   - "рецептата" как се четат
+//                                  данните от VBO към шейдъра
+// ============================================================
+#include <glad/glad.h>
+#include <glm/glm.hpp>
+#include <vector>
+
+struct Vertex {
+    glm::vec3 position;
+    glm::vec3 normal;
+    glm::vec2 uv;
+};
+
+class Mesh {
+public:
+    Mesh(const std::vector<Vertex>& vertices, const std::vector<unsigned int>& indices);
+    ~Mesh();
+
+    Mesh(const Mesh&) = delete;
+    Mesh& operator=(const Mesh&) = delete;
+
+    void draw() const;
+
+private:
+    GLuint m_vao = 0, m_vbo = 0, m_ebo = 0;
+    GLsizei m_indexCount = 0;
+};
+
+// Фабрични функции за основни геометрични примитиви
+namespace Primitives {
+    Mesh* createCube();                                 // куб 1x1x1 с център (0,0,0)
+    Mesh* createPlane(float size, float uvRepeat = 1);  // хоризонтална равнина size x size
+}
