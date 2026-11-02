@@ -15,6 +15,8 @@
 // ============================================================
 #include <glm/glm.hpp>
 
+#include "Collision.h"
+
 class Shader;
 class Mesh;
 class Terrain;
@@ -37,6 +39,17 @@ public:
               const Mesh& plane) const;
 
     void reset(const glm::vec3& position, float headingRadians);
+
+    // ---- Колизии ----
+    // Правоъгълникът на колата, гледан отгоре
+    OBB collisionBox() const;
+    // Скоростта като 2D вектор (X, Z)
+    glm::vec2 velocity2D() const;
+    // Реакция на удар: избутване навън + промяна на скоростта.
+    // normal - накъде да се избута колата; връща скоростта на удара (m/s)
+    float applyCollision(const glm::vec2& normal, float depth, float restitution);
+    // Загуба на скорост (напр. при удар в лек обект - конус)
+    void scaleSpeed(float factor) { m_speed *= factor; }
 
     // Матрица "кола -> свят": колони = forward, up, right, позиция
     glm::mat4 modelMatrix() const;

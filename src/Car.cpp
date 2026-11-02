@@ -156,6 +156,47 @@ void Car::followTerrain(float dt, const Terrain& terrain) {
     m_right   = glm::normalize(glm::cross(m_forward, m_up));
 }
 
+// ============================================================
+//  Колизии
+// ============================================================
+OBB Car::collisionBox() const {
+    return { glm::vec2(m_position.x, m_position.z),
+             glm::vec2(kLength * 0.5f, kWidth * 0.5f),
+             m_heading };
+}
+
+glm::vec2 Car::velocity2D() const {
+    return glm::vec2(std::cos(m_heading), std::sin(m_heading)) * m_speed;
+}
+
+// ------------------------------------------------------------
+//  Реакция на удар:
+//   1) Позиционна корекция - избутваме колата навън по нормалата,
+//      точно на дълбочината на проникване.
+//   2) Импулс - компонентата на скоростта ПО нормалата (към
+//      препятствието) се обръща и намалява с коеф. на възстановяване e:
+//          v' = v - (1 + e) * (v · n) * n
+//      e = 0 -> пълно "залепване", e = 1 -> идеално еластичен удар.
+//      Компонентата ПО ДОПИРАТЕЛНАТА се запазва -> колата се плъзга
+//      покрай стената при удар под малък ъгъл.
+//   3) Колата може да се движи само напред/назад по посоката си,
+//      затова новата скорост е проекцията на v' върху тази посока.
+// ------------------------------------------------------------
+float Car::applyCollision(const glm::vec2& normal, float depth, float restitution) {
+    m_position.x += normal.x * depth;
+    m_position.z += normal.y * depth;
+
+    glm::vec2 v  = velocity2D();
+    float     vn = glm::dot(v, normal);       // < 0 -> движим се КЪМ препятствието
+    if (vn >= 0.0f) return 0.0f;              // вече се отдалечаваме - само корекцията
+
+    v -= (1.0f + restitution) * vn * normal;
+
+    glm::vec2 fwd(std::cos(m_heading), std::sin(m_heading));
+    m_speed = glm::dot(v, fwd);
+    return -vn;                               // сила на удара
+}
+
 glm::mat4 Car::modelMatrix() const {
     // Колоните на матрицата = образите на локалните оси (както при лампите)
     glm::mat4 m(1.0f);
