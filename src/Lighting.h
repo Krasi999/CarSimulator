@@ -14,8 +14,9 @@
 
 class Shader;
 
-// Максимален брой точкови светлини - трябва да съвпада с MAX_POINT_LIGHTS в basic.frag
+// Максимален брой светлини - трябва да съвпада с MAX_POINT_LIGHTS / MAX_SPOT_LIGHTS в basic.frag
 constexpr int kMaxPointLights = 16;
+constexpr int kMaxSpotLights  = 4;
 
 // Насочена светлина (слънце): безкрайно далечна, всички лъчи са успоредни
 struct DirLight {
@@ -28,10 +29,26 @@ struct DirLight {
 // интензитетът намалява с разстоянието (затихване / attenuation)
 struct PointLight {
     glm::vec3 position{0.0f};
-    glm::vec3 color   {1.0f, 0.85f, 0.6f};
+    glm::vec3 color   {2.8f, 2.3f, 1.6f};    // > 1 -> по-силна от "бяла" светлина
     float constant  = 1.0f;     // Kc
-    float linear    = 0.09f;    // Kl
-    float quadratic = 0.032f;   // Kq   -> полезен обхват ~50 м
+    float linear    = 0.14f;    // Kl
+    float quadratic = 0.07f;    // Kq   -> полезен обхват ~30 м: ясно петно под лампата
+};
+
+// Прожекторна светлина (фар): точкова светлина, ограничена в конус.
+// Вътре в innerCutoff - пълна сила, между inner и outer - плавно
+// отслабва, извън outerCutoff - тъмно.
+struct SpotLight {
+    glm::vec3 position{0.0f};
+    glm::vec3 direction{1.0f, 0.0f, 0.0f};    // накъде свети (единичен вектор)
+    // Силна светлина: фарът е ниско (0.68 м) и лъчите падат почти успоредно
+    // на пътя -> N·L е малко (~0.1), затова цветът е много над 1
+    glm::vec3 color{12.0f, 11.4f, 10.0f};
+    float innerCutoff = 0.985f;               // cos(10°)
+    float outerCutoff = 0.906f;               // cos(25°)
+    float constant  = 1.0f;
+    float linear    = 0.05f;
+    float quadratic = 0.01f;
 };
 
 // Материал: как повърхността отразява светлината
@@ -48,11 +65,12 @@ struct LightingToggles {
     bool diffuse  = true;
     bool specular = true;
     bool sun      = true;
-    bool lamps    = true;
+    bool lamps    = true;       // разрешение за лампите (включват се автоматично нощем)
     bool blinn    = false;       // false = класически Phong, true = Blinn-Phong
 };
 
 // Изпращане на данните към шейдъра
 void uploadLights(const Shader& shader, const DirLight& sun,
-                  const std::vector<PointLight>& lamps, const LightingToggles& t);
+                  const std::vector<PointLight>& lamps, const std::vector<SpotLight>& spots,
+                  const LightingToggles& t);
 void uploadMaterial(const Shader& shader, const Material& m);

@@ -2,7 +2,8 @@
 // ============================================================
 //  Fragment шейдър - изпълнява се ЗА ВСЕКИ ПИКСЕЛ (фрагмент).
 //
-//  Етап 3: Модел на осветяване на Phong (per-pixel / Phong shading)
+//  Модел на осветяване на Phong (per-pixel / Phong shading)
+//  Източници: насочена (слънце/луна), точкови (лампи), прожекторни (фарове)
 //
 //    I = Ka*Ia  +  Σ светлини [ Kd*max(N·L,0)*Id  +  Ks*max(R·V,0)^n*Is ] * затихване
 //
@@ -18,6 +19,7 @@
 // ============================================================
 
 #define MAX_POINT_LIGHTS 16
+#define MAX_SPOT_LIGHTS  4
 
 struct Material {
     vec3  color;
@@ -40,6 +42,17 @@ struct PointLight {
     float quadratic;
 };
 
+struct SpotLight {
+    vec3  position;
+    vec3  direction;    // накъде свети
+    vec3  color;
+    float innerCutoff;  // cos на вътрешния ъгъл
+    float outerCutoff;  // cos на външния ъгъл
+    float constant;
+    float linear;
+    float quadratic;
+};
+
 in vec3 vWorldPos;
 in vec3 vNormal;
 in vec2 vUV;
@@ -49,6 +62,9 @@ uniform Material   uMaterial;
 uniform DirLight   uSun;
 uniform PointLight uPointLights[MAX_POINT_LIGHTS];
 uniform int        uNumPointLights;
+uniform SpotLight  uSpotLights[MAX_SPOT_LIGHTS];
+uniform int        uNumSpotLights;
+uniform vec3       uFogColor;     // = цвета на хоризонта (сменя се с деня и нощта)
 
 uniform vec3 uComponents;   // (ambient, diffuse, specular): 1 = вкл., 0 = изкл.
 uniform int  uBlinn;        // 0 = Phong, 1 = Blinn-Phong
@@ -128,14 +144,32 @@ void main() {
         result += shade(N, V, L, uPointLights[i].color, albedo) * attenuation;
     }
 
+    // ---- Прожекторни светлини (фарове) ----
+    for (int i = 0; i < uNumSpotLights; ++i) {
+        vec3  toLight = uSpotLights[i].position - vWorldPos;
+        float d = length(toLight);
+        vec3  L = toLight / d;
+
+        // theta = cos на ъгъла между оста на фара и посоката към точката.
+        // -L е посоката ОТ фара КЪМ точката.
+        float theta   = dot(-L, normalize(uSpotLights[i].direction));
+        float epsilon = uSpotLights[i].innerCutoff - uSpotLights[i].outerCutoff;
+        float cone    = clamp((theta - uSpotLights[i].outerCutoff) / epsilon, 0.0, 1.0);
+
+        float attenuation = 1.0 / (uSpotLights[i].constant
+                                 + uSpotLights[i].linear    * d
+                                 + uSpotLights[i].quadratic * d * d);
+
+        result += shade(N, V, L, uSpotLights[i].color, albedo) * attenuation * cone;
+    }
+
     // ---- Собствено светене (не зависи от осветлението) ----
     result += uMaterial.emissive;
 
     // ---- Мъгла ----
-    vec3  skyColor = vec3(0.62, 0.78, 0.95);
     float dist = length(vWorldPos - uCameraPos);
     float fog  = clamp((dist - 120.0) / (480.0 - 120.0), 0.0, 1.0);
-    result = mix(result, skyColor, fog);
+    result = mix(result, uFogColor, fog);
 
     // ---- Прозрачност ----
     // За сянката: q = 0 в центъра, 1 по краищата на правоъгълника.
